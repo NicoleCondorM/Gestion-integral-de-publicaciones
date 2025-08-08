@@ -41,9 +41,9 @@ export default function RevisorPage(){
                 <textarea className="input" rows="3" value={(coment[p.id]?.aspectos)||''} onChange={e=> setComent(c=> ({...c, [p.id]:{...c[p.id], aspectos:e.target.value}}))} />
               </Field>
               <div style={{display:'flex', gap:6}}>
-                <button className="btn success" onClick={()=>send(p,'aceptar')}>Recomendar Aceptar</button>
+                <button className="btn success" onClick={()=>send(p,'aceptar')}>Aceptar</button>
                 <button className="btn warning" onClick={()=>send(p,'cambios')}>Solicitar Cambios</button>
-                <button className="btn danger" onClick={()=>send(p,'rechazar')}>Recomendar Rechazo</button>
+                <button className="btn danger" onClick={()=>send(p,'rechazar')}>Rechazar</button>
               </div>
             </div>
           </div>

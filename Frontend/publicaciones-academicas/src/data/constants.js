@@ -20,6 +20,7 @@ export const CATEGORIAS = ['Ciencias', 'Ingeniería', 'Salud', 'Humanidades']
 
 export const LICENCIAS = ['All rights reserved', 'CC-BY', 'CC-BY-SA', 'CC0']
 
+
 export const META_DEFAULT = {
   isbn: '',
   doi: '',

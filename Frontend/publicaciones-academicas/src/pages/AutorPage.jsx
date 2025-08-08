@@ -93,13 +93,6 @@ export default function AutorPage(){
                     </select>
                   </Field>
                 </div>
-                <div className="col">
-                  <Field label="Licencia">
-                    <select className="input" value={form.meta.licencia} onChange={e=>set('meta', {...form.meta, licencia:e.target.value})}>
-                      {LICENCIAS.map(c=> <option key={c}>{c}</option>)}
-                    </select>
-                  </Field>
-                </div>
               </div>
 
               {form.tipo==='articulo' && (
