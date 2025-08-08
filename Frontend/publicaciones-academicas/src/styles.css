@@ -1,0 +1,43 @@
+/*
+  Estilos base sencillos y claros, adaptables a roles.
+*/
+:root{
+  --bg:#0b1020;
+  --panel:#121a30;
+  --muted:#8ea0b9;
+  --text:#e8eefc;
+  --primary:#5aa2ff;
+  --success:#2ecc71;
+  --warning:#f1c40f;
+  --danger:#e74c3c;
+  --chip:#1e2a4a;
+}
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text)}
+a{color:var(--primary);text-decoration:none}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.header{display:flex;align-items:center;justify-content:space-between;background:var(--panel);padding:12px 16px;border-bottom:1px solid #223}
+.nav a{margin-right:12px}
+.card{background:var(--panel);border:1px solid #223;border-radius:10px;padding:16px}
+.row{display:flex;gap:16px;flex-wrap:wrap}
+.col{flex:1 1 320px}
+.input, select, textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #2a3555;background:#0f162b;color:var(--text)}
+.label{font-size:12px;color:var(--muted);margin-bottom:6px}
+.btn{padding:10px 14px;border-radius:8px;border:1px solid #2a3555;background:#152140;color:var(--text);cursor:pointer}
+.btn.primary{background:linear-gradient(180deg,#274c8f,#1f3a70);border-color:#30518f}
+.btn.success{background:#1f6f4a}
+.btn.warning{background:#6f5b1f}
+.btn.danger{background:#6f2a1f}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:var(--chip);border:1px solid #2a3555;color:var(--muted);font-size:12px}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:8px 10px;border-bottom:1px solid #223}
+.kpis{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
+.kpi{background:var(--panel);border:1px solid #223;border-radius:8px;padding:10px;min-width:140px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.status-BORRADOR{color:#bbb}
+.status-EN_REVISION{color:#5aa2ff}
+.status-CAMBIOS_SOLICITADOS{color:#f1c40f}
+.status-APROBADO{color:#2ecc71}
+.status-PUBLICADO{color:#8ef}
+.toast{position:fixed;right:16px;bottom:16px;background:#152140;border:1px solid #2a3555;border-radius:10px;padding:12px;min-width:240px}
