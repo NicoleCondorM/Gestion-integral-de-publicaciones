@@ -44,7 +44,7 @@ Existen 2 maneras de probar el funcionamiento de nuestro proyecto
 
 Ingresamos a la URL que nos facilito nuestro servidor gratuito.
 
-- URL: "link"
+- URL: ["link"](https://gestion-integral-de-publicaciones-production.up.railway.app/revisor)
 
 - Forma 2 (Desarrollador):
 
