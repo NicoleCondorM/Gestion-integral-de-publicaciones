@@ -33,6 +33,10 @@ export const USERS_SEED = [
   { id: 'u3', nombre: 'Ema Editora', rol: 'editor' },
   { id: 'u4', nombre: 'Luz Lectora', rol: 'lector' },
   { id: 'u5', nombre: 'Admin', rol: 'admin' },
+  { id: 'u6', nombre: 'Carlos Autor', rol: 'autor' },
+  { id: 'u7', nombre: 'Sofía Revisor', rol: 'revisor' },
+  { id: 'u8', nombre: 'Tomás Editor', rol: 'editor' },
+  { id: 'u9', nombre: 'Valeria Lector', rol: 'lector' }
 ]
 
 export const PUBLICACIONES_SEED = [
@@ -76,6 +80,72 @@ export const PUBLICACIONES_SEED = [
     historial: [
       { fecha: Date.now()-86400000*20, accion: 'Aprobado v2' },
       { fecha: Date.now()-86400000*10, accion: 'Publicado v3' }
+    ],
+    asignados: { revisores: ['Rafa Revisor'] }
+  },
+  {
+    id: 'p3',
+    tipo: 'articulo',
+    titulo: 'Aplicaciones de IoT en la Salud Pública',
+    resumen: 'Explora cómo los dispositivos conectados mejoran la atención médica.',
+    palabrasClave: ['IoT', 'salud', 'sensores'],
+    estado: 'EN_REVISION',
+    version: 2,
+    meta: { isbn: '', doi: '10.1000/iot456', categoria: 'Salud', licencia: 'CC0' },
+    autorPrincipal: 'Carlos Científico',
+    coautores: ['Sofía Saludable'],
+    articulo: {
+      revistaObjetivo: 'HealthTech Journal',
+      seccion: 'Case Study',
+      referencias: ['WHO 2021', 'Chen et al. 2019'],
+      figuras: ['fig2.png', 'fig3.png']
+    },
+    historial: [
+      { fecha: Date.now()-86400000*5, accion: 'Subido EN_REVISION v2' }
+    ],
+    asignados: { revisores: ['Sofía Saludable'] }
+  },
+  {
+    id: 'p4',
+    tipo: 'libro',
+    titulo: 'Humanidades Digitales: Una Perspectiva Crítica',
+    resumen: 'Discute el impacto de la tecnología en las ciencias humanas.',
+    palabrasClave: ['digital', 'humanidades', 'cultura'],
+    estado: 'CAMBIOS_SOLICITADOS',
+    version: 1,
+    meta: { isbn: '978-1-23-456789-0', doi: '', categoria: 'Humanidades', licencia: 'CC-BY' },
+    autorPrincipal: 'Valeria Visionaria',
+    coautores: ['Tomás Técnico'],
+    libro: {
+      capitulos: [
+        { numero: 1, titulo: 'Tecnología y Cultura', resumen: 'Relación entre medios digitales y sociedad.' },
+        { numero: 2, titulo: 'Archivos Digitales', resumen: 'Preservación y acceso.' }
+      ]
+    },
+    historial: [
+      { fecha: Date.now()-86400000*3, accion: 'Revisión solicitada v1' }
+    ],
+    asignados: { revisores: ['Rafa Revisor'] }
+  },
+  {
+    id: 'p4',
+    tipo: 'libro',
+    titulo: 'Humanidades Digitales: Una Perspectiva Crítica',
+    resumen: 'Discute el impacto de la tecnología en las ciencias humanas.',
+    palabrasClave: ['digital', 'humanidades', 'cultura'],
+    estado: 'CAMBIOS_SOLICITADOS',
+    version: 1,
+    meta: { isbn: '978-1-23-456789-0', doi: '', categoria: 'Humanidades', licencia: 'CC-BY' },
+    autorPrincipal: 'Valeria Visionaria',
+    coautores: ['Tomás Técnico'],
+    libro: {
+      capitulos: [
+        { numero: 1, titulo: 'Tecnología y Cultura', resumen: 'Relación entre medios digitales y sociedad.' },
+        { numero: 2, titulo: 'Archivos Digitales', resumen: 'Preservación y acceso.' }
+      ]
+    },
+    historial: [
+      { fecha: Date.now()-86400000*3, accion: 'Revisión solicitada v1' }
     ],
     asignados: { revisores: ['Rafa Revisor'] }
   }
