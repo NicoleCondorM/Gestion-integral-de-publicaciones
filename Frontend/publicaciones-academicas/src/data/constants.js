@@ -28,15 +28,11 @@ export const META_DEFAULT = {
 }
 
 export const USERS_SEED = [
-  { id: 'u1', nombre: 'Ana Autora', rol: 'autor' },
-  { id: 'u2', nombre: 'Rafa Revisor', rol: 'revisor' },
-  { id: 'u3', nombre: 'Ema Editora', rol: 'editor' },
-  { id: 'u4', nombre: 'Luz Lectora', rol: 'lector' },
-  { id: 'u5', nombre: 'Admin', rol: 'admin' },
-  { id: 'u6', nombre: 'Carlos Autor', rol: 'autor' },
-  { id: 'u7', nombre: 'Sofía Revisor', rol: 'revisor' },
-  { id: 'u8', nombre: 'Tomás Editor', rol: 'editor' },
-  { id: 'u9', nombre: 'Valeria Lector', rol: 'lector' }
+  { id: 'u1', nombre: 'autor', rol: 'autor' },
+  { id: 'u2', nombre: 'revisor', rol: 'revisor' },
+  { id: 'u3', nombre: 'editor', rol: 'editor' },
+  { id: 'u4', nombre: 'lector', rol: 'lector' },
+  { id: 'u5', nombre: 'admin', rol: 'admin' },
 ]
 
 export const PUBLICACIONES_SEED = [
