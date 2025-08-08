@@ -22,7 +22,7 @@ export default function LoginPage(){
             {Object.values(ROLES).map(r=> <option key={r} value={r}>{r}</option>)}
           </select>
           <div className="label" style={{marginTop:10}}>Password</div>
-          <input className="input" value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ej: Ana Autora" />
+          <input className="input" value={nombre} onChange={e=>setNombre(e.target.value)} type="password" />
           <div style={{marginTop:10, display:'flex', gap:8}}>
             <button className="btn primary" type="submit">Entrar</button>
           </div>
