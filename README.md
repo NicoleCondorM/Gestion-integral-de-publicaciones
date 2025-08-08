@@ -38,12 +38,23 @@ Nuestro proyecto cuenta con descubrimiento dinamico de servicios (Eureka), expos
 
 - ## ⚙️ Instalación
 
+Existen 2 maneras de probar el funcionamiento de nuestro proyecto
+
+- Forma 1 (Facil):
+
+Ingresamos a la URL que nos facilito nuestro servidor gratuito.
+
+- URL: "link"
+
+- Forma 2 (Desarrollador):
+
 ### Clonar el proyecto
 - Ingresamos a GitHub Desktop y le damos clik en clonar repositorio
 - Seleccionamos la opcion de URL
 - Pegamos este URL : https://github.com/NicoleCondorM/Gestion-integral-de-publicaciones.git
 - Seleccionamos donde queremos guardar
 - Desde un IDE abrimos la carpeta
+
 ![VS Code](https://img.shields.io/badge/VS%20Code-007ACC?style=for-the-badge&logo=visual-studio-code&logoColor=white)
 ![IntelliJ IDEA](https://img.shields.io/badge/IntelliJ%20IDEA-000000?style=for-the-badge&logo=intellij-idea&logoColor=white)
 
@@ -77,7 +88,13 @@ cd frontend-microservices-client
 
 npm start
 
+- ## ✅ Funcionamiento
 
+Una vez iniciadas el backend como el frontend podemos ingresar a cualquier navegador web e ingresar a la URL que nos proporcionan el terminal en donde iniciamos nuestro frontend, generalmente tiene estructura:
+
+- URL: http://localhost:"puerto"
+
+Se tienen 3 roles que son autor, editor y revisor en donde cada rol tiene un funcionamiento en este proyecto, el autor crea una publicacion en borrador en donde se añade contenido y lo envia a revision, en esta parte entra el rol del editor donde asigna al revisor, y el revisor analiza la publicación, si es necesaria añade comentarios y emite esta recomendación, en donde, depende de si la publicacion sera aceptada, rechazada o se solicitan cambios. Si la publicacion necesita cambios el revisor enviara una notificación al autor donde el autor recibira la recomendacion y actualizara el contenido para nuevamente enviar a revision y vueleve a pasar por el editor y revisor hasta que la publicacion sea actualizada para poder agregarse al catalogo o caso contrario ser rechazada.
 
 
 
