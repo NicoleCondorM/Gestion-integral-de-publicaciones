@@ -23,7 +23,7 @@ export function AppProvider({children}){
     } else {
       const nuevo = { id: genId('u'), nombre: nombre||rol, rol }
       setState(s=> ({...s, user: nuevo, users: [...s.users, nuevo]}))
-      pushNotif('Usuario registrado (simulado)', 'info')
+      pushNotif('Usuario registrado', 'info')
     }
   }
   const logout = ()=> setState(s=> ({...s, user:null}))
