@@ -1,0 +1,302 @@
+package publicaciones.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import publicaciones.dto.*;
+import publicaciones.enums.EstadoPublicacion;
+import publicaciones.model.Autor;
+import publicaciones.model.Paper;
+import publicaciones.model.VersionPublicacion;
+import publicaciones.producer.NotificacionProducer;
+import publicaciones.repository.AutorRepository;
+import publicaciones.repository.PaperRepository;
+import publicaciones.repository.VersionPublicacionRepository;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class PaperService {
+
+    private final PaperRepository paperRepository;
+    private final AutorRepository autorRepository;
+    private final VersionPublicacionRepository versionPublicacionRepository;
+    private final NotificacionProducer notificacionProducer;
+    private final PublicacionLifecycleService lifecycleService;
+
+    @Transactional
+    public ResponseDto crearArticulo(PaperDto dto) {
+        Autor autor = autorRepository.findById(dto.getAutorId())
+                .orElseThrow(() -> new RuntimeException("No existe el autor con id: " + dto.getAutorId()));
+
+        Paper paper = new Paper();
+        paper.setAutor(autor);
+        paper.setTitulo(dto.getTitulo());
+        paper.setAreaInvestigacion(dto.getAreaInvestigacion());
+        paper.setRevista(dto.getRevista());
+        paper.setIndexacion(dto.getIndexacion());
+        paper.setDoi(dto.getDoi());
+        paper.setVolumen(dto.getVolumen());
+        paper.setNumero(dto.getNumero());
+        paper.setPaginaInicio(dto.getPaginaInicio());
+        paper.setPaginaFin(dto.getPaginaFin());
+        paper.setPalabrasClave(dto.getPalabrasClave());
+        paper.setAbstractIngles(dto.getAbstractIngles());
+        paper.setEditorial(dto.getEditorial());
+        paper.setAnioPublicacion(dto.getAnioPublicacion());
+        paper.setResumen(dto.getResumen());
+        paper.setIsbn(dto.getIsbn());
+
+        Paper savedPaper = paperRepository.save(paper);
+
+        notificacionProducer.enviarNotificacion(
+            String.format("Se registró el artículo '%s' del autor: %s", dto.getTitulo(), autor.getNombre()),
+            "NUEVO ARTICULO"
+        );
+
+        log.info("Artículo creado: {} por autor: {}", savedPaper.getTitulo(), autor.getNombre());
+
+        return new ResponseDto("Artículo registrado exitosamente", convertirADto(savedPaper));
+    }
+
+    public List<PublicacionResponseDto> listarArticulos() {
+        return paperRepository.findAll().stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    public List<PublicacionResponseDto> listarArticulosPorEstado(EstadoPublicacion estado) {
+        return paperRepository.findByEstadoOrderByFechaCreacionDesc(estado).stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    public List<PublicacionResponseDto> listarArticulosPorAutor(Long autorId) {
+        return paperRepository.findByAutorIdOrderByFechaCreacionDesc(autorId).stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    public List<PublicacionResponseDto> listarArticulosPorRevisor(String revisor) {
+        List<EstadoPublicacion> estadosRevision = List.of(
+            EstadoPublicacion.EN_REVISION, 
+            EstadoPublicacion.CAMBIOS_SOLICITADOS
+        );
+        return paperRepository.findByRevisorAsignadoAndEstadoIn(revisor, estadosRevision).stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    public List<PublicacionResponseDto> listarArticulosPorRevista(String revista) {
+        return paperRepository.findByRevista(revista).stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    public List<PublicacionResponseDto> listarArticulosPorArea(String area, EstadoPublicacion estado) {
+        return paperRepository.findByAreaInvestigacionAndEstado(area, estado).stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    public PublicacionResponseDto obtenerArticuloPorId(Long id) {
+        Paper paper = paperRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
+        return convertirADto(paper);
+    }
+
+    public PublicacionResponseDto obtenerArticuloPorDoi(String doi) {
+        Paper paper = paperRepository.findByDoi(doi)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con DOI: " + doi));
+        return convertirADto(paper);
+    }
+
+    @Transactional
+    public ResponseDto cambiarEstado(Long paperId, CambioEstadoDto cambioEstadoDto) {
+        Paper paper = paperRepository.findById(paperId)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + paperId));
+
+        try {
+            switch (cambioEstadoDto.getNuevoEstado()) {
+                case EN_REVISION -> lifecycleService.enviarParaRevision(
+                    paper, 
+                    cambioEstadoDto.getRevisorAsignado(), 
+                    cambioEstadoDto.getUsuarioId()
+                );
+                case APROBADO -> lifecycleService.aprobarPublicacion(
+                    paper, 
+                    cambioEstadoDto.getUsuarioId(), 
+                    cambioEstadoDto.getComentarios()
+                );
+                case CAMBIOS_SOLICITADOS -> lifecycleService.solicitarCambios(
+                    paper, 
+                    cambioEstadoDto.getUsuarioId(), 
+                    cambioEstadoDto.getComentarios()
+                );
+                case PUBLICADO -> lifecycleService.publicarPublicacion(
+                    paper, 
+                    cambioEstadoDto.getUsuarioId()
+                );
+                case RETIRADO -> lifecycleService.retirarPublicacion(
+                    paper, 
+                    cambioEstadoDto.getUsuarioId(), 
+                    cambioEstadoDto.getMotivo()
+                );
+                default -> throw new IllegalArgumentException("Transición de estado no soportada: " + cambioEstadoDto.getNuevoEstado());
+            }
+
+            Paper paperActualizado = paperRepository.save(paper);
+            log.info("Estado del artículo {} cambiado a {}", paperId, cambioEstadoDto.getNuevoEstado());
+
+            return new ResponseDto(
+                String.format("Estado cambiado exitosamente a %s", cambioEstadoDto.getNuevoEstado().getDescripcion()),
+                convertirADto(paperActualizado)
+            );
+
+        } catch (IllegalStateException e) {
+            log.error("Error al cambiar estado del artículo {}: {}", paperId, e.getMessage());
+            throw new RuntimeException("Error al cambiar estado: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public ResponseDto crearNuevaVersion(Long paperOriginalId, NuevaVersionDto nuevaVersionDto) {
+        Paper paperOriginal = paperRepository.findById(paperOriginalId)
+                .orElseThrow(() -> new RuntimeException("Artículo original no encontrado con id: " + paperOriginalId));
+
+        // Crear nueva versión del artículo
+        Paper nuevaVersion = new Paper();
+        BeanUtils.copyProperties(paperOriginal, nuevaVersion, "id", "version", "fechaCreacion");
+        
+        // Actualizar campos modificados
+        if (nuevaVersionDto.getTitulo() != null) nuevaVersion.setTitulo(nuevaVersionDto.getTitulo());
+        if (nuevaVersionDto.getResumen() != null) nuevaVersion.setResumen(nuevaVersionDto.getResumen());
+        if (nuevaVersionDto.getEditorial() != null) nuevaVersion.setEditorial(nuevaVersionDto.getEditorial());
+        if (nuevaVersionDto.getIsbn() != null) nuevaVersion.setIsbn(nuevaVersionDto.getIsbn());
+        if (nuevaVersionDto.getAreaInvestigacion() != null) nuevaVersion.setAreaInvestigacion(nuevaVersionDto.getAreaInvestigacion());
+        if (nuevaVersionDto.getRevista() != null) nuevaVersion.setRevista(nuevaVersionDto.getRevista());
+        if (nuevaVersionDto.getDoi() != null) nuevaVersion.setDoi(nuevaVersionDto.getDoi());
+
+        // Configurar nueva versión
+        nuevaVersion.setVersion(paperOriginal.generarNuevaVersion());
+        nuevaVersion.setEstado(EstadoPublicacion.BORRADOR);
+        nuevaVersion.setPublicacionOriginal(paperOriginal);
+
+        Paper nuevaVersionGuardada = paperRepository.save(nuevaVersion);
+
+        // Crear registro de versión
+        VersionPublicacion versionPublicacion = new VersionPublicacion();
+        versionPublicacion.setNumeroVersion(nuevaVersion.getVersion());
+        versionPublicacion.setComentarios(nuevaVersionDto.getComentarios());
+        versionPublicacion.setCreadoPor(nuevaVersionDto.getCreadoPor());
+        versionPublicacion.setPublicacionOriginal(paperOriginal);
+        versionPublicacion.setNuevaPublicacion(nuevaVersionGuardada);
+        
+        versionPublicacionRepository.save(versionPublicacion);
+
+        log.info("Nueva versión {} creada para artículo {}", nuevaVersion.getVersion(), paperOriginalId);
+
+        return new ResponseDto(
+            String.format("Nueva versión %s creada exitosamente", nuevaVersion.getVersion()),
+            convertirADto(nuevaVersionGuardada)
+        );
+    }
+
+    public List<PublicacionResponseDto> listarVersiones(Long paperId) {
+        List<VersionPublicacion> versiones = versionPublicacionRepository
+                .findByPublicacionOriginalIdOrderByFechaCreacionDesc(paperId);
+        
+        return versiones.stream()
+                .map(version -> convertirADto((Paper) version.getNuevaPublicacion()))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public ResponseDto actualizarArticulo(Long id, PaperDto dto) {
+        Paper paper = paperRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
+
+        // Solo permitir actualizaciones en estado BORRADOR o CAMBIOS_SOLICITADOS
+        if (paper.getEstado() != EstadoPublicacion.BORRADOR && 
+            paper.getEstado() != EstadoPublicacion.CAMBIOS_SOLICITADOS) {
+            throw new IllegalStateException("No se puede actualizar un artículo en estado: " + paper.getEstado());
+        }
+
+        // Actualizar campos
+        paper.setTitulo(dto.getTitulo());
+        paper.setAreaInvestigacion(dto.getAreaInvestigacion());
+        paper.setRevista(dto.getRevista());
+        paper.setIndexacion(dto.getIndexacion());
+        paper.setDoi(dto.getDoi());
+        paper.setVolumen(dto.getVolumen());
+        paper.setNumero(dto.getNumero());
+        paper.setPaginaInicio(dto.getPaginaInicio());
+        paper.setPaginaFin(dto.getPaginaFin());
+        paper.setPalabrasClave(dto.getPalabrasClave());
+        paper.setAbstractIngles(dto.getAbstractIngles());
+        paper.setEditorial(dto.getEditorial());
+        paper.setAnioPublicacion(dto.getAnioPublicacion());
+        paper.setResumen(dto.getResumen());
+        paper.setIsbn(dto.getIsbn());
+
+        Paper paperActualizado = paperRepository.save(paper);
+        log.info("Artículo {} actualizado", id);
+
+        return new ResponseDto("Artículo actualizado exitosamente", convertirADto(paperActualizado));
+    }
+
+    @Transactional
+    public ResponseDto eliminarArticulo(Long id) {
+        Paper paper = paperRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
+
+        // Solo permitir eliminación en estado BORRADOR
+        if (paper.getEstado() != EstadoPublicacion.BORRADOR) {
+            throw new IllegalStateException("Solo se pueden eliminar artículos en estado BORRADOR");
+        }
+
+        paperRepository.delete(paper);
+        log.info("Artículo {} eliminado", id);
+
+        return new ResponseDto("Artículo eliminado exitosamente", null);
+    }
+
+    public List<PublicacionResponseDto> buscarArticulos(String termino) {
+        return paperRepository.findByTituloOrAbstractContaining(termino, termino).stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    private PublicacionResponseDto convertirADto(Paper paper) {
+        PublicacionResponseDto dto = new PublicacionResponseDto();
+        dto.setId(paper.getId());
+        dto.setTitulo(paper.getTitulo());
+        dto.setAnioPublicacion(paper.getAnioPublicacion());
+        dto.setEditorial(paper.getEditorial());
+        dto.setIsbn(paper.getIsbn());
+        dto.setResumen(paper.getResumen());
+        dto.setEstado(paper.getEstado());
+        dto.setVersion(paper.getVersion());
+        dto.setFechaCreacion(paper.getFechaCreacion());
+        dto.setFechaActualizacion(paper.getFechaActualizacion());
+        dto.setFechaEnvioRevision(paper.getFechaEnvioRevision());
+        dto.setFechaAprobacion(paper.getFechaAprobacion());
+        dto.setFechaPublicacion(paper.getFechaPublicacion());
+        dto.setComentariosRevision(paper.getComentariosRevision());
+        dto.setRevisorAsignado(paper.getRevisorAsignado());
+        dto.setTipoPublicacion("Artículo");
+
+        if (paper.getAutor() != null) {
+            dto.setAutorNombre(paper.getAutor().getNombre());
+            dto.setAutorApellido(paper.getAutor().getApellido());
+            dto.setAutorEmail(paper.getAutor().getEmail());
+        }
+
+        return dto;
+    }
+}

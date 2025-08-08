@@ -1,0 +1,122 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  redis:
+    host: localhost
+    port: 6379
+    timeout: 2000ms
+  cloud:
+    gateway:
+      routes:
+        # Auth Server Routes (sin autenticación)
+        - id: auth-server
+          uri: lb://ms-auth-server
+          predicates:
+            - Path=/auth/**
+          filters:
+            - StripPrefix=0
+        # Catálogo Routes (públicas - sin autenticación)
+        - id: catalogo-public
+          uri: lb://ms-catalogo
+          predicates:
+            - Path=/api/catalogo/**
+          filters:
+            - StripPrefix=0
+            - name: CircuitBreaker
+              args:
+                name: catalogo-cb
+                fallbackUri: forward:/fallback/catalogo
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+        # Publicaciones Routes (requieren autenticación)
+        - id: publicaciones-autores
+          uri: lb://api-publicaciones
+          predicates:
+            - Path=/api/v1/autores/**
+          filters:
+            - StripPrefix=2
+            - name: JwtAuthenticationFilter
+            - name: CircuitBreaker
+              args:
+                name: publicaciones-cb
+                fallbackUri: forward:/fallback/publicaciones
+        - id: publicaciones-libros
+          uri: lb://api-publicaciones
+          predicates:
+            - Path=/api/v1/libros/**
+          filters:
+            - StripPrefix=2
+            - name: JwtAuthenticationFilter
+            - name: CircuitBreaker
+              args:
+                name: publicaciones-cb
+                fallbackUri: forward:/fallback/publicaciones
+        # Notificaciones Routes (requieren autenticación)
+        - id: notificaciones-service
+          uri: lb://ms-notificaciones
+          predicates:
+            - Path=/api/notificaciones/**
+          filters:
+            - StripPrefix=0
+            - name: JwtAuthenticationFilter
+            - name: CircuitBreaker
+              args:
+                name: notificaciones-cb
+                fallbackUri: forward:/fallback/notificaciones
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+
+# Circuit Breaker Configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      catalogo-cb:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+      publicaciones-cb:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 60
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+      notificaciones-cb:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 70
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+
+# JWT Configuration
+jwt:
+  secret: mySecretKey123456789012345678901234567890
+  expiration: 86400000
+
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,circuitbreakers,ratelimiters
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    ec.edu.espe.gateway: DEBUG

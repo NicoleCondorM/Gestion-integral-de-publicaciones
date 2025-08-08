@@ -1,0 +1,17 @@
+ec\edu\espe\auth\dto\LoginRequest.class
+ec\edu\espe\auth\service\AuditService.class
+ec\edu\espe\auth\dto\AuditEvent.class
+ec\edu\espe\auth\dto\TokenResponse.class
+ec\edu\espe\auth\config\SecurityConfig.class
+ec\edu\espe\auth\repository\UserRepository.class
+ec\edu\espe\auth\service\CustomUserDetailsService.class
+ec\edu\espe\auth\config\DataInitializer.class
+ec\edu\espe\auth\controller\AuthController.class
+ec\edu\espe\auth\controller\JwksController.class
+ec\edu\espe\auth\model\Role.class
+ec\edu\espe\auth\dto\RegisterRequest.class
+ec\edu\espe\auth\model\User.class
+ec\edu\espe\auth\AuthServerApplication.class
+ec\edu\espe\auth\service\JwtService.class
+ec\edu\espe\auth\config\RabbitMQConfig.class
+ec\edu\espe\auth\controller\TestController.class

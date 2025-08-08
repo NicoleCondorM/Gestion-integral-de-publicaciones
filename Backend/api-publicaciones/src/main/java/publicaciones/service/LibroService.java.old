@@ -1,0 +1,282 @@
+package publicaciones.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import publicaciones.dto.LibroDto;
+import publicaciones.dto.ResponseDto;
+import publicaciones.dto.PublicacionResponseDto;
+import publicaciones.dto.CambioEstadoDto;
+import publicaciones.dto.NuevaVersionDto;
+import publicaciones.enums.EstadoPublicacion;
+import publicaciones.model.Autor;
+import publicaciones.model.Libro;
+import publicaciones.model.VersionPublicacion;
+import publicaciones.producer.NotificacionProducer;
+import publicaciones.repository.AutorRepository;
+import publicaciones.repository.LibroRepository;
+import publicaciones.repository.VersionPublicacionRepository;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class LibroService {
+
+    private final LibroRepository libroRepository;
+    private final AutorRepository autorRepository;
+    private final VersionPublicacionRepository versionPublicacionRepository;
+    private final NotificacionProducer notificacionProducer;
+    private final PublicacionLifecycleService lifecycleService;
+
+        @Transactional
+    public ResponseDto crearLibro(LibroDto dto) {
+        Autor autor = autorRepository.findById(dto.getAutorId())
+                .orElseThrow(() -> new RuntimeException("No existe el autor con id: " + dto.getAutorId()));
+        
+        Libro libro = new Libro();
+        libro.setAutorPrincipalId(autor.getId());
+        libro.setTitulo(dto.getTitulo());
+        libro.setNumeroPaginas(dto.getNumeroPaginas());
+        libro.setEditorial(dto.getEditorial());
+        libro.setAnioPublicacion(dto.getAnioPublicacion());
+        libro.setResumen(dto.getResumen());
+        libro.setIdioma(dto.getIdioma() != null ? dto.getIdioma() : "Español");
+        libro.setPrecio(dto.getPrecio());
+        libro.setFormato(dto.getFormato() != null ? dto.getFormato() : "Físico");
+        libro.setPalabrasClave(dto.getPalabrasClave() != null ? dto.getPalabrasClave() : List.of());
+        libro.setTablaContenidos(dto.getTablaContenidos());
+        if (dto.getNumeroEdicion() != null) libro.setNumeroEdicion(dto.getNumeroEdicion());
+
+        // Configurar metadatos
+        if (libro.getMetadatos() == null) {
+            libro.setMetadatos(new publicaciones.model.MetadatosPublicacion());
+        }
+        libro.getMetadatos().setIsbn(dto.getIsbn());
+        libro.getMetadatos().setGenero(dto.getGenero());
+        libro.getMetadatos().setPaginas(dto.getNumeroPaginas());
+
+        Libro savedLibro = libroRepository.save(libro);
+
+        notificacionProducer.enviarNotificacion(
+            String.format("Se registró el libro '%s' del autor: %s", dto.getTitulo(), autor.getNombre()),
+            "NUEVO LIBRO"
+
+        log.info("Libro creado: {} por autor: {}", savedLibro.getTitulo(), autor.getNombre());
+
+        return new ResponseDto("Libro registrado exitosamente", convertirADto(savedLibro));
+    }
+
+    public List<PublicacionResponseDto> listarLibros() {
+        return libroRepository.findAll().stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    public List<PublicacionResponseDto> listarLibrosPorEstado(EstadoPublicacion estado) {
+        return libroRepository.findByEstadoOrderByFechaCreacionDesc(estado).stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    public List<PublicacionResponseDto> listarLibrosPorAutor(Long autorId) {
+        return libroRepository.findByAutorIdOrderByFechaCreacionDesc(autorId).stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    public List<PublicacionResponseDto> listarLibrosPorRevisor(String revisor) {
+        List<EstadoPublicacion> estadosRevision = List.of(
+            EstadoPublicacion.EN_REVISION, 
+            EstadoPublicacion.CAMBIOS_SOLICITADOS
+        );
+        return libroRepository.findByRevisorAsignadoAndEstadoIn(revisor, estadosRevision).stream()
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+    }
+
+    public PublicacionResponseDto obtenerLibroPorId(Long id) {
+        Libro libro = libroRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Libro no encontrado con id: " + id));
+        return convertirADto(libro);
+    }
+
+    @Transactional
+    public ResponseDto cambiarEstado(Long libroId, CambioEstadoDto cambioEstadoDto) {
+        Libro libro = libroRepository.findById(libroId)
+                .orElseThrow(() -> new RuntimeException("Libro no encontrado con id: " + libroId));
+
+        try {
+            switch (cambioEstadoDto.getNuevoEstado()) {
+                case EN_REVISION -> lifecycleService.enviarParaRevision(
+                    libro, 
+                    cambioEstadoDto.getRevisorAsignado(), 
+                    cambioEstadoDto.getUsuarioId()
+                );
+                case APROBADO -> lifecycleService.aprobarPublicacion(
+                    libro, 
+                    cambioEstadoDto.getUsuarioId(), 
+                    cambioEstadoDto.getComentarios()
+                );
+                case CAMBIOS_SOLICITADOS -> lifecycleService.solicitarCambios(
+                    libro, 
+                    cambioEstadoDto.getUsuarioId(), 
+                    cambioEstadoDto.getComentarios()
+                );
+                case PUBLICADO -> lifecycleService.publicarPublicacion(
+                    libro, 
+                    cambioEstadoDto.getUsuarioId()
+                );
+                case RETIRADO -> lifecycleService.retirarPublicacion(
+                    libro, 
+                    cambioEstadoDto.getUsuarioId(), 
+                    cambioEstadoDto.getMotivo()
+                );
+                default -> throw new IllegalArgumentException("Transición de estado no soportada: " + cambioEstadoDto.getNuevoEstado());
+            }
+
+            Libro libroActualizado = libroRepository.save(libro);
+            log.info("Estado del libro {} cambiado a {}", libroId, cambioEstadoDto.getNuevoEstado());
+
+            return new ResponseDto(
+                String.format("Estado cambiado exitosamente a %s", cambioEstadoDto.getNuevoEstado().getDescripcion()),
+                convertirADto(libroActualizado)
+            );
+
+        } catch (IllegalStateException e) {
+            log.error("Error al cambiar estado del libro {}: {}", libroId, e.getMessage());
+            throw new RuntimeException("Error al cambiar estado: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public ResponseDto crearNuevaVersion(Long libroOriginalId, NuevaVersionDto nuevaVersionDto) {
+        Libro libroOriginal = libroRepository.findById(libroOriginalId)
+                .orElseThrow(() -> new RuntimeException("Libro original no encontrado con id: " + libroOriginalId));
+
+        // Crear nueva versión del libro
+        Libro nuevaVersion = new Libro();
+        BeanUtils.copyProperties(libroOriginal, nuevaVersion, "id", "version", "fechaCreacion");
+        
+        // Actualizar campos modificados
+        if (nuevaVersionDto.getTitulo() != null) nuevaVersion.setTitulo(nuevaVersionDto.getTitulo());
+        if (nuevaVersionDto.getResumen() != null) nuevaVersion.setResumen(nuevaVersionDto.getResumen());
+        if (nuevaVersionDto.getEditorial() != null) nuevaVersion.setEditorial(nuevaVersionDto.getEditorial());
+        if (nuevaVersionDto.getIsbn() != null) nuevaVersion.setIsbn(nuevaVersionDto.getIsbn());
+        if (nuevaVersionDto.getGenero() != null) nuevaVersion.setGenero(nuevaVersionDto.getGenero());
+        if (nuevaVersionDto.getNumeroPaginas() != null) nuevaVersion.setNumeroPaginas(nuevaVersionDto.getNumeroPaginas());
+
+        // Configurar nueva versión
+        nuevaVersion.setVersion(libroOriginal.generarNuevaVersion());
+        nuevaVersion.setEstado(EstadoPublicacion.BORRADOR);
+        nuevaVersion.setPublicacionOriginal(libroOriginal);
+
+        Libro nuevaVersionGuardada = libroRepository.save(nuevaVersion);
+
+        // Crear registro de versión
+        VersionPublicacion versionPublicacion = new VersionPublicacion();
+        versionPublicacion.setNumeroVersion(nuevaVersion.getVersion());
+        versionPublicacion.setComentarios(nuevaVersionDto.getComentarios());
+        versionPublicacion.setCreadoPor(nuevaVersionDto.getCreadoPor());
+        versionPublicacion.setPublicacionOriginal(libroOriginal);
+        versionPublicacion.setNuevaPublicacion(nuevaVersionGuardada);
+        
+        versionPublicacionRepository.save(versionPublicacion);
+
+        log.info("Nueva versión {} creada para libro {}", nuevaVersion.getVersion(), libroOriginalId);
+
+        return new ResponseDto(
+            String.format("Nueva versión %s creada exitosamente", nuevaVersion.getVersion()),
+            convertirADto(nuevaVersionGuardada)
+        );
+    }
+
+    public List<PublicacionResponseDto> listarVersiones(Long libroId) {
+        List<VersionPublicacion> versiones = versionPublicacionRepository
+                .findByPublicacionOriginalIdOrderByFechaCreacionDesc(libroId);
+        
+        return versiones.stream()
+                .map(version -> convertirADto((Libro) version.getNuevaPublicacion()))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public ResponseDto actualizarLibro(Long id, LibroDto dto) {
+        Libro libro = libroRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Libro no encontrado con id: " + id));
+
+        // Solo permitir actualizaciones en estado BORRADOR o CAMBIOS_SOLICITADOS
+        if (libro.getEstado() != EstadoPublicacion.BORRADOR && 
+            libro.getEstado() != EstadoPublicacion.CAMBIOS_SOLICITADOS) {
+            throw new IllegalStateException("No se puede actualizar un libro en estado: " + libro.getEstado());
+        }
+
+        // Actualizar campos
+        libro.setTitulo(dto.getTitulo());
+        libro.setGenero(dto.getGenero());
+        libro.setIsbn(dto.getIsbn());
+        libro.setNumeroPaginas(dto.getNumeroPaginas());
+        libro.setEditorial(dto.getEditorial());
+        libro.setAnioPublicacion(dto.getAnioPublicacion());
+        libro.setResumen(dto.getResumen());
+        if (dto.getIdioma() != null) libro.setIdioma(dto.getIdioma());
+        if (dto.getPrecio() != null) libro.setPrecio(dto.getPrecio());
+        if (dto.getFormato() != null) libro.setFormato(dto.getFormato());
+        if (dto.getPalabrasClave() != null) libro.setPalabrasClave(dto.getPalabrasClave());
+        if (dto.getTablaContenidos() != null) libro.setTablaContenidos(dto.getTablaContenidos());
+        if (dto.getNumeroEdicion() != null) libro.setNumeroEdicion(dto.getNumeroEdicion());
+
+        Libro libroActualizado = libroRepository.save(libro);
+        log.info("Libro {} actualizado", id);
+
+        return new ResponseDto("Libro actualizado exitosamente", convertirADto(libroActualizado));
+    }
+
+    @Transactional
+    public ResponseDto eliminarLibro(Long id) {
+        Libro libro = libroRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Libro no encontrado con id: " + id));
+
+        // Solo permitir eliminación en estado BORRADOR
+        if (libro.getEstado() != EstadoPublicacion.BORRADOR) {
+            throw new IllegalStateException("Solo se pueden eliminar libros en estado BORRADOR");
+        }
+
+        libroRepository.delete(libro);
+        log.info("Libro {} eliminado", id);
+
+        return new ResponseDto("Libro eliminado exitosamente", null);
+    }
+
+    private PublicacionResponseDto convertirADto(Libro libro) {
+        PublicacionResponseDto dto = new PublicacionResponseDto();
+        dto.setId(libro.getId());
+        dto.setTitulo(libro.getTitulo());
+        dto.setAnioPublicacion(libro.getAnioPublicacion());
+        dto.setEditorial(libro.getEditorial());
+        dto.setIsbn(libro.getIsbn());
+        dto.setResumen(libro.getResumen());
+        dto.setEstado(libro.getEstado());
+        dto.setVersion(libro.getVersion());
+        dto.setFechaCreacion(libro.getFechaCreacion());
+        dto.setFechaActualizacion(libro.getFechaActualizacion());
+        dto.setFechaEnvioRevision(libro.getFechaEnvioRevision());
+        dto.setFechaAprobacion(libro.getFechaAprobacion());
+        dto.setFechaPublicacion(libro.getFechaPublicacion());
+        dto.setComentariosRevision(libro.getComentariosRevision());
+        dto.setRevisorAsignado(libro.getRevisorAsignado());
+        dto.setTipoPublicacion("Libro");
+
+        if (libro.getAutor() != null) {
+            dto.setAutorNombre(libro.getAutor().getNombre());
+            dto.setAutorApellido(libro.getAutor().getApellido());
+            dto.setAutorEmail(libro.getAutor().getEmail());
+        }
+
+        return dto;
+    }
+}

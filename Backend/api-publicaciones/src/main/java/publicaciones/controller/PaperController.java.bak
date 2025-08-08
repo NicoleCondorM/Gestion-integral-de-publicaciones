@@ -1,0 +1,207 @@
+package publicaciones.controller;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+import publicaciones.dto.*;
+import publicaciones.enums.EstadoPublicacion;
+import publicaciones.service.PaperService;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/articulos")
+@RequiredArgsConstructor
+@Tag(name = "Artículos", description = "Gestión de artículos científicos con ciclo de vida editorial")
+public class PaperController {
+
+    private final PaperService paperService;
+
+    @Operation(summary = "Crear nuevo artículo", description = "Crea un nuevo artículo en estado BORRADOR")
+    @PostMapping
+    @PreAuthorize("hasRole('AUTOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> crearArticulo(@RequestBody @Valid PaperDto dto) {
+        ResponseDto response = paperService.crearArticulo(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @Operation(summary = "Listar todos los artículos")
+    @GetMapping
+    @PreAuthorize("hasRole('LECTOR') or hasRole('AUTOR') or hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<List<PublicacionResponseDto>> listarArticulos() {
+        List<PublicacionResponseDto> articulos = paperService.listarArticulos();
+        return ResponseEntity.ok(articulos);
+    }
+
+    @Operation(summary = "Listar artículos por estado")
+    @GetMapping("/estado/{estado}")
+    @PreAuthorize("hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<List<PublicacionResponseDto>> listarArticulosPorEstado(
+            @Parameter(description = "Estado de la publicación") @PathVariable EstadoPublicacion estado) {
+        List<PublicacionResponseDto> articulos = paperService.listarArticulosPorEstado(estado);
+        return ResponseEntity.ok(articulos);
+    }
+
+    @Operation(summary = "Listar artículos por autor")
+    @GetMapping("/autor/{autorId}")
+    @PreAuthorize("hasRole('AUTOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<List<PublicacionResponseDto>> listarArticulosPorAutor(
+            @Parameter(description = "ID del autor") @PathVariable Long autorId) {
+        List<PublicacionResponseDto> articulos = paperService.listarArticulosPorAutor(autorId);
+        return ResponseEntity.ok(articulos);
+    }
+
+    @Operation(summary = "Listar artículos por revista")
+    @GetMapping("/revista/{revista}")
+    @PreAuthorize("hasRole('LECTOR') or hasRole('AUTOR') or hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<List<PublicacionResponseDto>> listarArticulosPorRevista(
+            @Parameter(description = "Nombre de la revista") @PathVariable String revista) {
+        List<PublicacionResponseDto> articulos = paperService.listarArticulosPorRevista(revista);
+        return ResponseEntity.ok(articulos);
+    }
+
+    @Operation(summary = "Obtener artículo por ID")
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('LECTOR') or hasRole('AUTOR') or hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<PublicacionResponseDto> obtenerArticuloPorId(
+            @Parameter(description = "ID del artículo") @PathVariable Long id) {
+        PublicacionResponseDto articulo = paperService.obtenerArticuloPorId(id);
+        return ResponseEntity.ok(articulo);
+    }
+
+    @Operation(summary = "Obtener artículo por DOI")
+    @GetMapping("/doi/{doi}")
+    @PreAuthorize("hasRole('LECTOR') or hasRole('AUTOR') or hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<PublicacionResponseDto> obtenerArticuloPorDoi(
+            @Parameter(description = "DOI del artículo") @PathVariable String doi) {
+        PublicacionResponseDto articulo = paperService.obtenerArticuloPorDoi(doi);
+        return ResponseEntity.ok(articulo);
+    }
+
+    @Operation(summary = "Buscar artículos por término")
+    @GetMapping("/buscar")
+    @PreAuthorize("hasRole('LECTOR') or hasRole('AUTOR') or hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<List<PublicacionResponseDto>> buscarArticulos(
+            @Parameter(description = "Término de búsqueda") @RequestParam String termino) {
+        List<PublicacionResponseDto> articulos = paperService.buscarArticulos(termino);
+        return ResponseEntity.ok(articulos);
+    }
+
+    @Operation(summary = "Cambiar estado del artículo", description = "Maneja transiciones del ciclo de vida editorial")
+    @PutMapping("/{id}/estado")
+    @PreAuthorize("hasRole('AUTOR') or hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> cambiarEstado(
+            @Parameter(description = "ID del artículo") @PathVariable Long id,
+            @RequestBody @Valid CambioEstadoDto cambioEstado) {
+        ResponseDto response = paperService.cambiarEstado(id, cambioEstado);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Enviar artículo para revisión")
+    @PostMapping("/{id}/enviar-revision")
+    @PreAuthorize("hasRole('AUTOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> enviarParaRevision(
+            @Parameter(description = "ID del artículo") @PathVariable Long id,
+            @RequestParam String revisorAsignado,
+            @RequestParam String usuarioId) {
+        
+        CambioEstadoDto cambioEstado = new CambioEstadoDto();
+        cambioEstado.setNuevoEstado(EstadoPublicacion.EN_REVISION);
+        cambioEstado.setRevisorAsignado(revisorAsignado);
+        cambioEstado.setUsuarioId(usuarioId);
+        
+        ResponseDto response = paperService.cambiarEstado(id, cambioEstado);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Aprobar artículo")
+    @PostMapping("/{id}/aprobar")
+    @PreAuthorize("hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> aprobarArticulo(
+            @Parameter(description = "ID del artículo") @PathVariable Long id,
+            @RequestParam String usuarioId,
+            @RequestParam(required = false) String comentarios) {
+        
+        CambioEstadoDto cambioEstado = new CambioEstadoDto();
+        cambioEstado.setNuevoEstado(EstadoPublicacion.APROBADO);
+        cambioEstado.setUsuarioId(usuarioId);
+        cambioEstado.setComentarios(comentarios);
+        
+        ResponseDto response = paperService.cambiarEstado(id, cambioEstado);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Solicitar cambios en artículo")
+    @PostMapping("/{id}/solicitar-cambios")
+    @PreAuthorize("hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> solicitarCambios(
+            @Parameter(description = "ID del artículo") @PathVariable Long id,
+            @RequestParam String usuarioId,
+            @RequestParam String comentarios) {
+        
+        CambioEstadoDto cambioEstado = new CambioEstadoDto();
+        cambioEstado.setNuevoEstado(EstadoPublicacion.CAMBIOS_SOLICITADOS);
+        cambioEstado.setUsuarioId(usuarioId);
+        cambioEstado.setComentarios(comentarios);
+        
+        ResponseDto response = paperService.cambiarEstado(id, cambioEstado);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Publicar artículo")
+    @PostMapping("/{id}/publicar")
+    @PreAuthorize("hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> publicarArticulo(
+            @Parameter(description = "ID del artículo") @PathVariable Long id,
+            @RequestParam String usuarioId) {
+        
+        CambioEstadoDto cambioEstado = new CambioEstadoDto();
+        cambioEstado.setNuevoEstado(EstadoPublicacion.PUBLICADO);
+        cambioEstado.setUsuarioId(usuarioId);
+        
+        ResponseDto response = paperService.cambiarEstado(id, cambioEstado);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Retirar artículo")
+    @PostMapping("/{id}/retirar")
+    @PreAuthorize("hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> retirarArticulo(
+            @Parameter(description = "ID del artículo") @PathVariable Long id,
+            @RequestParam String usuarioId,
+            @RequestParam String motivo) {
+        
+        CambioEstadoDto cambioEstado = new CambioEstadoDto();
+        cambioEstado.setNuevoEstado(EstadoPublicacion.RETIRADO);
+        cambioEstado.setUsuarioId(usuarioId);
+        cambioEstado.setMotivo(motivo);
+        
+        ResponseDto response = paperService.cambiarEstado(id, cambioEstado);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Actualizar artículo", description = "Solo disponible en estados BORRADOR y CAMBIOS_SOLICITADOS")
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('AUTOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> actualizarArticulo(
+            @Parameter(description = "ID del artículo") @PathVariable Long id,
+            @RequestBody @Valid PaperDto dto) {
+        ResponseDto response = paperService.actualizarArticulo(id, dto);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Eliminar artículo", description = "Solo disponible en estado BORRADOR")
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('AUTOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> eliminarArticulo(
+            @Parameter(description = "ID del artículo") @PathVariable Long id) {
+        ResponseDto response = paperService.eliminarArticulo(id);
+        return ResponseEntity.ok(response);
+    }
+}

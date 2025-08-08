@@ -1,0 +1,118 @@
+package publicaciones.controller;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+import publicaciones.dto.*;
+import publicaciones.enums.EstadoPublicacion;
+import publicaciones.service.LibroService;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/libros")
+@RequiredArgsConstructor
+@Tag(name = "Libros", description = "Gestión de libros con ciclo de vida editorial")
+public class LibroController {
+
+    private final LibroService libroService;
+
+    @Operation(summary = "Crear nuevo libro", description = "Crea un nuevo libro en estado BORRADOR")
+    @PostMapping
+    @PreAuthorize("hasRole('AUTOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> createLibro(@RequestBody @Valid LibroDto dto) {
+        ResponseDto response = libroService.crearLibro(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @Operation(summary = "Listar todos los libros")
+    @GetMapping
+    @PreAuthorize("hasRole('LECTOR') or hasRole('AUTOR') or hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<List<PublicacionResponseDto>> listarLibros() {
+        List<PublicacionResponseDto> libros = libroService.listarLibros();
+        return ResponseEntity.ok(libros);
+    }
+
+    @Operation(summary = "Listar libros por estado")
+    @GetMapping("/estado/{estado}")
+    @PreAuthorize("hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<List<PublicacionResponseDto>> listarLibrosPorEstado(
+            @Parameter(description = "Estado de la publicación") @PathVariable EstadoPublicacion estado) {
+        List<PublicacionResponseDto> libros = libroService.listarLibrosPorEstado(estado);
+        return ResponseEntity.ok(libros);
+    }
+
+    @Operation(summary = "Obtener libro por ID")
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('LECTOR') or hasRole('AUTOR') or hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<PublicacionResponseDto> obtenerLibroPorId(
+            @Parameter(description = "ID del libro") @PathVariable Long id) {
+        PublicacionResponseDto libro = libroService.obtenerLibroPorId(id);
+        return ResponseEntity.ok(libro);
+    }
+
+    @Operation(summary = "Cambiar estado del libro", description = "Maneja transiciones del ciclo de vida editorial")
+    @PutMapping("/{id}/estado")
+    @PreAuthorize("hasRole('AUTOR') or hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> cambiarEstado(
+            @Parameter(description = "ID del libro") @PathVariable Long id,
+            @RequestBody @Valid CambioEstadoDto cambioEstado) {
+        ResponseDto response = libroService.cambiarEstado(id, cambioEstado);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Enviar libro para revisión")
+    @PostMapping("/{id}/enviar-revision")
+    @PreAuthorize("hasRole('AUTOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> enviarParaRevision(
+            @Parameter(description = "ID del libro") @PathVariable Long id,
+            @RequestParam String revisorAsignado,
+            @RequestParam String usuarioId) {
+        
+        CambioEstadoDto cambioEstado = new CambioEstadoDto();
+        cambioEstado.setNuevoEstado(EstadoPublicacion.EN_REVISION);
+        cambioEstado.setRevisorAsignado(revisorAsignado);
+        cambioEstado.setUsuarioId(usuarioId);
+        
+        ResponseDto response = libroService.cambiarEstado(id, cambioEstado);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Aprobar libro")
+    @PostMapping("/{id}/aprobar")
+    @PreAuthorize("hasRole('REVISOR') or hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> aprobarLibro(
+            @Parameter(description = "ID del libro") @PathVariable Long id,
+            @RequestParam String usuarioId,
+            @RequestParam(required = false) String comentarios) {
+        
+        CambioEstadoDto cambioEstado = new CambioEstadoDto();
+        cambioEstado.setNuevoEstado(EstadoPublicacion.APROBADO);
+        cambioEstado.setUsuarioId(usuarioId);
+        cambioEstado.setComentarios(comentarios);
+        
+        ResponseDto response = libroService.cambiarEstado(id, cambioEstado);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Publicar libro")
+    @PostMapping("/{id}/publicar")
+    @PreAuthorize("hasRole('EDITOR') or hasRole('ADMIN')")
+    public ResponseEntity<ResponseDto> publicarLibro(
+            @Parameter(description = "ID del libro") @PathVariable Long id,
+            @RequestParam String usuarioId) {
+        
+        CambioEstadoDto cambioEstado = new CambioEstadoDto();
+        cambioEstado.setNuevoEstado(EstadoPublicacion.PUBLICADO);
+        cambioEstado.setUsuarioId(usuarioId);
+        
+        ResponseDto response = libroService.cambiarEstado(id, cambioEstado);
+        return ResponseEntity.ok(response);
+    }
+}

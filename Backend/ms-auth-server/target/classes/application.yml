@@ -1,0 +1,54 @@
+server:
+  port: 8762
+spring:
+  application:
+    name: ms-auth-server
+  datasource:
+    url: jdbc:postgresql://localhost:5432/db-auth-server
+    username: postgres
+    password: qwerty123
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: admin
+    password: admin
+
+# JWT Configuration
+jwt:
+  secret: mySecretKey123456789012345678901234567890
+  expiration: 86400000 # 24 hours in milliseconds
+  refresh-expiration: 604800000 # 7 days in milliseconds
+
+# OAuth2 Configuration
+oauth2:
+  client:
+    client-id: editorial-client
+    client-secret: editorial-secret
+    redirect-uri: http://localhost:8080/login/oauth2/code/editorial
+    scope: read,write,admin
+    grant-types: authorization_code,refresh_token,client_credentials
+    token-validity: 3600 # 1 hour
+    refresh-token-validity: 86400 # 24 hours
+
+# Eureka Configuration
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+# Logging
+logging:
+  level:
+    org.springframework.security: DEBUG
+    ec.edu.espe.auth: DEBUG
+    org.springframework.amqp: DEBUG

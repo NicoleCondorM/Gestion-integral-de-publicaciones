@@ -1,0 +1,232 @@
+package publicaciones.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import publicaciones.dto.LibroDto;
+import publicaciones.dto.ResponseDto;
+import publicaciones.dto.PublicacionResponseDto;
+import publicaciones.enums.EstadoPublicacion;
+import publicaciones.enums.TipoPublicacion;
+import publicaciones.model.Autor;
+import publicaciones.model.Libro;
+import publicaciones.model.MetadatosPublicacion;
+import publicaciones.producer.NotificacionProducer;
+import publicaciones.repository.AutorRepository;
+import publicaciones.repository.LibroRepository;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class LibroService {
+
+    private final LibroRepository libroRepository;
+    private final AutorRepository autorRepository;
+    private final NotificacionProducer notificacionProducer;
+
+    @Transactional
+    public ResponseDto crearLibro(LibroDto dto) {
+        // Convertir autorId Long a String para buscar
+        String autorIdStr = dto.getAutorId() != null ? dto.getAutorId().toString() : null;
+        if (autorIdStr == null) {
+            throw new RuntimeException("Se requiere el ID del autor");
+        }
+        
+        Autor autor = autorRepository.findById(autorIdStr)
+                .orElseThrow(() -> new RuntimeException("No existe el autor con id: " + autorIdStr));
+        
+        Libro libro = new Libro();
+        libro.setAutorPrincipalId(autor.getId());
+        libro.setTitulo(dto.getTitulo());
+        libro.setNumeroPaginas(dto.getNumeroPaginas());
+        libro.setEditorial(dto.getEditorial());
+        libro.setAnioPublicacion(dto.getAnioPublicacion());
+        libro.setResumen(dto.getResumen());
+        libro.setIdioma(dto.getIdioma() != null ? dto.getIdioma() : "Español");
+        libro.setPrecio(dto.getPrecio());
+        libro.setFormato(dto.getFormato() != null ? dto.getFormato() : "Físico");
+        libro.setTipo(TipoPublicacion.LIBRO);
+        if (dto.getNumeroEdicion() != null) libro.setNumeroEdicion(dto.getNumeroEdicion());
+
+        // Configurar palabras clave - convertir String a List<String>
+        if (dto.getPalabrasClave() != null && !dto.getPalabrasClave().trim().isEmpty()) {
+            List<String> palabras = Arrays.asList(dto.getPalabrasClave().split(","))
+                    .stream()
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+            libro.setPalabrasClave(palabras);
+        }
+
+        // Configurar metadatos
+        if (libro.getMetadatos() == null) {
+            libro.setMetadatos(new MetadatosPublicacion());
+        }
+        if (dto.getIsbn() != null) libro.getMetadatos().setIsbn(dto.getIsbn());
+        if (dto.getGenero() != null) libro.getMetadatos().setGenero(dto.getGenero());
+        libro.getMetadatos().setPaginas(dto.getNumeroPaginas());
+
+        Libro savedLibro = libroRepository.save(libro);
+
+        notificacionProducer.enviarNotificacion(
+            String.format("Se registró el libro '%s' del autor: %s", dto.getTitulo(), autor.getNombre()),
+            "NUEVO LIBRO"
+        );
+
+        return ResponseDto.builder()
+                .mensaje("Libro creado exitosamente")
+                .codigo("200")
+                .dato(savedLibro)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PublicacionResponseDto> obtenerTodos() {
+        List<Libro> libros = libroRepository.findAll();
+        return libros.stream()
+                .map(this::convertirAPublicacionResponseDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public PublicacionResponseDto obtenerPorId(String id) {
+        Libro libro = libroRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("No se encontró el libro con id: " + id));
+        return convertirAPublicacionResponseDto(libro);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PublicacionResponseDto> buscarPorTitulo(String titulo) {
+        List<Libro> libros = libroRepository.findByTituloContainingIgnoreCase(titulo);
+        return libros.stream()
+                .map(this::convertirAPublicacionResponseDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<PublicacionResponseDto> buscarPorAutor(String autorId) {
+        List<Libro> libros = libroRepository.findByAutorPrincipalId(autorId);
+        return libros.stream()
+                .map(this::convertirAPublicacionResponseDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<PublicacionResponseDto> buscarPorGenero(String genero) {
+        List<Libro> libros = libroRepository.findAll().stream()
+                .filter(libro -> libro.getMetadatos() != null 
+                        && genero.equalsIgnoreCase(libro.getMetadatos().getGenero()))
+                .collect(Collectors.toList());
+        return libros.stream()
+                .map(this::convertirAPublicacionResponseDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<PublicacionResponseDto> buscarPorEstado(EstadoPublicacion estado) {
+        List<Libro> libros = libroRepository.findByEstado(estado);
+        return libros.stream()
+                .map(this::convertirAPublicacionResponseDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public ResponseDto actualizarLibro(String id, LibroDto dto) {
+        Libro libro = libroRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("No se encontró el libro con id: " + id));
+
+        if (libro.getEstado() == EstadoPublicacion.PUBLICADO) {
+            throw new RuntimeException("No se puede actualizar un libro ya publicado. Cree una nueva versión.");
+        }
+
+        // Actualizar campos básicos
+        if (dto.getTitulo() != null) libro.setTitulo(dto.getTitulo());
+        if (dto.getResumen() != null) libro.setResumen(dto.getResumen());
+        if (dto.getNumeroPaginas() > 0) libro.setNumeroPaginas(dto.getNumeroPaginas());
+        if (dto.getEditorial() != null) libro.setEditorial(dto.getEditorial());
+        if (dto.getAnioPublicacion() > 0) libro.setAnioPublicacion(dto.getAnioPublicacion());
+        if (dto.getIdioma() != null) libro.setIdioma(dto.getIdioma());
+        if (dto.getPrecio() != null) libro.setPrecio(dto.getPrecio());
+        if (dto.getFormato() != null) libro.setFormato(dto.getFormato());
+        if (dto.getNumeroEdicion() != null) libro.setNumeroEdicion(dto.getNumeroEdicion());
+        
+        // Actualizar palabras clave
+        if (dto.getPalabrasClave() != null && !dto.getPalabrasClave().trim().isEmpty()) {
+            List<String> palabras = Arrays.asList(dto.getPalabrasClave().split(","))
+                    .stream()
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+            libro.setPalabrasClave(palabras);
+        }
+
+        // Actualizar metadatos
+        if (libro.getMetadatos() == null) {
+            libro.setMetadatos(new MetadatosPublicacion());
+        }
+        if (dto.getIsbn() != null) libro.getMetadatos().setIsbn(dto.getIsbn());
+        if (dto.getGenero() != null) libro.getMetadatos().setGenero(dto.getGenero());
+        if (dto.getNumeroPaginas() > 0) libro.getMetadatos().setPaginas(dto.getNumeroPaginas());
+
+        libroRepository.save(libro);
+
+        return ResponseDto.builder()
+                .mensaje("Libro actualizado exitosamente")
+                .codigo("200")
+                .build();
+    }
+
+    @Transactional
+    public ResponseDto eliminarLibro(String id) {
+        Libro libro = libroRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("No se encontró el libro con id: " + id));
+
+        if (libro.getEstado() == EstadoPublicacion.PUBLICADO) {
+            throw new RuntimeException("No se puede eliminar un libro publicado. Debe retirarlo primero.");
+        }
+
+        libroRepository.delete(libro);
+        
+        return ResponseDto.builder()
+                .mensaje("Libro eliminado exitosamente")
+                .codigo("200")
+                .build();
+    }
+
+    private PublicacionResponseDto convertirAPublicacionResponseDto(Libro libro) {
+        PublicacionResponseDto dto = new PublicacionResponseDto();
+        dto.setId(libro.getId());
+        dto.setTitulo(libro.getTitulo());
+        dto.setResumen(libro.getResumen());
+        dto.setEditorial(libro.getEditorial());
+        dto.setAnioPublicacion(libro.getAnioPublicacion());
+        dto.setEstado(libro.getEstado());
+        dto.setFechaCreacion(libro.getFechaCreacion());
+        dto.setFechaPublicacion(libro.getFechaPublicacion());
+        dto.setAutorPrincipalId(libro.getAutorPrincipalId());
+        dto.setCoAutoresIds(libro.getCoAutoresIds() != null ? libro.getCoAutoresIds() : List.of());
+        dto.setPalabrasClave(libro.getPalabrasClave() != null ? libro.getPalabrasClave() : List.of());
+        dto.setVersion(libro.getVersionActual());
+        
+        if (libro.getMetadatos() != null && libro.getMetadatos().getIsbn() != null) {
+            dto.setIsbn(libro.getMetadatos().getIsbn());
+        }
+        
+        // Campos específicos de libro
+        dto.setNumeroPaginas(libro.getNumeroPaginas());
+        dto.setIdioma(libro.getIdioma());
+        dto.setPrecio(libro.getPrecio());
+        dto.setFormato(libro.getFormato());
+        dto.setNumeroEdicion(libro.getNumeroEdicion());
+        if (libro.getMetadatos() != null) {
+            dto.setGenero(libro.getMetadatos().getGenero());
+        }
+        
+        return dto;
+    }
+}

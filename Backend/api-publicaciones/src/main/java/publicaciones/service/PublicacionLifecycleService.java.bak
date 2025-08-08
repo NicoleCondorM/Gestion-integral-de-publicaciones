@@ -1,0 +1,214 @@
+package publicaciones.service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import publicaciones.enums.EstadoPublicacion;
+import publicaciones.enums.TipoEvento;
+import publicaciones.model.EventoDominio;
+import publicaciones.model.OutboxEvento;
+import publicaciones.model.Publicacion;
+import publicaciones.repository.EventoDominioRepository;
+import publicaciones.repository.OutboxEventoRepository;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Servicio para manejar el ciclo de vida de las publicaciones y generar eventos de dominio
+ */
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class PublicacionLifecycleService {
+
+    private final EventoDominioRepository eventoDominioRepository;
+    private final OutboxEventoRepository outboxEventoRepository;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Envía una publicación para revisión
+     */
+    @Transactional
+    public void enviarParaRevision(Publicacion publicacion, String revisorAsignado, String usuarioId) {
+        // Validar transición de estado
+        if (!publicacion.puedeTransicionarA(EstadoPublicacion.EN_REVISION)) {
+            throw new IllegalStateException("La publicación no puede ser enviada para revisión desde su estado actual: " + publicacion.getEstado());
+        }
+
+        // Cambiar estado
+        publicacion.cambiarEstado(EstadoPublicacion.EN_REVISION);
+        publicacion.setRevisorAsignado(revisorAsignado);
+
+        // Crear evento de dominio
+        crearEventoDominio(publicacion, TipoEvento.PUBLICATION_SUBMITTED, usuarioId, 
+            Map.of("revisorAsignado", revisorAsignado, "estadoAnterior", EstadoPublicacion.BORRADOR.name()));
+
+        // Crear evento para solicitar revisión
+        crearEventoDominio(publicacion, TipoEvento.REVIEW_REQUESTED, usuarioId,
+            Map.of("revisorAsignado", revisorAsignado, "tipoPublicacion", publicacion.getClass().getSimpleName()));
+
+        log.info("Publicación {} enviada para revisión al revisor {}", publicacion.getId(), revisorAsignado);
+    }
+
+    /**
+     * Aprueba una publicación
+     */
+    @Transactional
+    public void aprobarPublicacion(Publicacion publicacion, String usuarioId, String comentarios) {
+        if (!publicacion.puedeTransicionarA(EstadoPublicacion.APROBADO)) {
+            throw new IllegalStateException("La publicación no puede ser aprobada desde su estado actual: " + publicacion.getEstado());
+        }
+
+        publicacion.cambiarEstado(EstadoPublicacion.APROBADO);
+        if (comentarios != null) {
+            publicacion.setComentariosRevision(comentarios);
+        }
+
+        crearEventoDominio(publicacion, TipoEvento.PUBLICATION_APPROVED, usuarioId,
+            Map.of("revisor", publicacion.getRevisorAsignado(), "comentarios", comentarios != null ? comentarios : ""));
+
+        log.info("Publicación {} aprobada por revisor {}", publicacion.getId(), publicacion.getRevisorAsignado());
+    }
+
+    /**
+     * Solicita cambios en una publicación
+     */
+    @Transactional
+    public void solicitarCambios(Publicacion publicacion, String usuarioId, String comentarios) {
+        if (!publicacion.puedeTransicionarA(EstadoPublicacion.CAMBIOS_SOLICITADOS)) {
+            throw new IllegalStateException("No se pueden solicitar cambios desde el estado actual: " + publicacion.getEstado());
+        }
+
+        publicacion.cambiarEstado(EstadoPublicacion.CAMBIOS_SOLICITADOS);
+        publicacion.setComentariosRevision(comentarios);
+
+        crearEventoDominio(publicacion, TipoEvento.CHANGES_REQUESTED, usuarioId,
+            Map.of("revisor", publicacion.getRevisorAsignado(), "comentarios", comentarios));
+
+        log.info("Cambios solicitados para publicación {} por revisor {}", publicacion.getId(), publicacion.getRevisorAsignado());
+    }
+
+    /**
+     * Publica una publicación
+     */
+    @Transactional
+    public void publicarPublicacion(Publicacion publicacion, String usuarioId) {
+        if (!publicacion.puedeTransicionarA(EstadoPublicacion.PUBLICADO)) {
+            throw new IllegalStateException("La publicación no puede ser publicada desde su estado actual: " + publicacion.getEstado());
+        }
+
+        publicacion.cambiarEstado(EstadoPublicacion.PUBLICADO);
+
+        // Evento de publicación
+        crearEventoDominio(publicacion, TipoEvento.PUBLICATION_PUBLISHED, usuarioId,
+            Map.of("fechaPublicacion", publicacion.getFechaPublicacion().toString()));
+
+        // Evento especial para el catálogo
+        crearEventoParaCatalogo(publicacion, usuarioId);
+
+        log.info("Publicación {} publicada exitosamente", publicacion.getId());
+    }
+
+    /**
+     * Retira una publicación
+     */
+    @Transactional
+    public void retirarPublicacion(Publicacion publicacion, String usuarioId, String motivo) {
+        if (!publicacion.puedeTransicionarA(EstadoPublicacion.RETIRADO)) {
+            throw new IllegalStateException("La publicación no puede ser retirada desde su estado actual: " + publicacion.getEstado());
+        }
+
+        publicacion.cambiarEstado(EstadoPublicacion.RETIRADO);
+        publicacion.setComentariosRevision(motivo);
+
+        crearEventoDominio(publicacion, TipoEvento.PUBLICATION_WITHDRAWN, usuarioId,
+            Map.of("motivo", motivo));
+
+        log.info("Publicación {} retirada. Motivo: {}", publicacion.getId(), motivo);
+    }
+
+    /**
+     * Crea un evento de dominio y lo almacena en la tabla outbox
+     */
+    private void crearEventoDominio(Publicacion publicacion, TipoEvento tipoEvento, String usuarioId, Map<String, Object> datosAdicionales) {
+        try {
+            // Crear evento de dominio
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("publicacionId", publicacion.getId());
+            payload.put("titulo", publicacion.getTitulo());
+            payload.put("estado", publicacion.getEstado().name());
+            payload.put("version", publicacion.getVersion());
+            payload.put("tipoPublicacion", publicacion.getClass().getSimpleName());
+            payload.putAll(datosAdicionales);
+
+            String payloadJson = objectMapper.writeValueAsString(payload);
+
+            // Guardar evento de dominio
+            EventoDominio evento = EventoDominio.crear(publicacion.getId(), tipoEvento, payloadJson, usuarioId);
+            eventoDominioRepository.save(evento);
+
+            // Crear evento en outbox para procesamiento asíncrono
+            String eventoId = UUID.randomUUID().toString();
+            String routingKey = "publicaciones." + tipoEvento.name().toLowerCase();
+            
+            OutboxEvento outboxEvento = new OutboxEvento(
+                eventoId, 
+                publicacion.getId(), 
+                tipoEvento, 
+                payloadJson, 
+                routingKey,
+                "publicaciones.events"
+            );
+            
+            outboxEventoRepository.save(outboxEvento);
+
+        } catch (JsonProcessingException e) {
+            log.error("Error al serializar evento de dominio: {}", e.getMessage());
+            throw new RuntimeException("Error al crear evento de dominio", e);
+        }
+    }
+
+    /**
+     * Crea evento especial para sincronización con catálogo
+     */
+    private void crearEventoParaCatalogo(Publicacion publicacion, String usuarioId) {
+        try {
+            Map<String, Object> catalogPayload = new HashMap<>();
+            catalogPayload.put("publicacionId", publicacion.getId());
+            catalogPayload.put("titulo", publicacion.getTitulo());
+            catalogPayload.put("autor", publicacion instanceof publicaciones.model.Libro libro ? 
+                (libro.getAutor() != null ? libro.getAutor().getNombre() + " " + libro.getAutor().getApellido() : "N/A") :
+                (publicacion instanceof publicaciones.model.Paper paper && paper.getAutor() != null ? 
+                    paper.getAutor().getNombre() + " " + paper.getAutor().getApellido() : "N/A"));
+            catalogPayload.put("tipoPublicacion", publicacion.getClass().getSimpleName());
+            catalogPayload.put("fechaPublicacion", publicacion.getFechaPublicacion().toString());
+            catalogPayload.put("isbn", publicacion.getIsbn());
+            catalogPayload.put("editorial", publicacion.getEditorial());
+            catalogPayload.put("resumen", publicacion.getResumen());
+
+            String payloadJson = objectMapper.writeValueAsString(catalogPayload);
+
+            // Evento específico para catálogo
+            String eventoId = UUID.randomUUID().toString();
+            OutboxEvento catalogEvent = new OutboxEvento(
+                eventoId,
+                publicacion.getId(),
+                TipoEvento.PUBLICATION_READY_FOR_CATALOG,
+                payloadJson,
+                "catalog.publication.ready",
+                "catalog.exchange"
+            );
+
+            outboxEventoRepository.save(catalogEvent);
+
+        } catch (JsonProcessingException e) {
+            log.error("Error al crear evento para catálogo: {}", e.getMessage());
+            throw new RuntimeException("Error al crear evento para catálogo", e);
+        }
+    }
+}

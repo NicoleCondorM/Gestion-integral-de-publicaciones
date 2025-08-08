@@ -1,0 +1,17 @@
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\AuthServerApplication.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\config\DataInitializer.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\config\RabbitMQConfig.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\config\SecurityConfig.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\controller\AuthController.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\controller\JwksController.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\controller\TestController.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\dto\AuditEvent.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\dto\LoginRequest.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\dto\RegisterRequest.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\dto\TokenResponse.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\model\Role.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\model\User.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\repository\UserRepository.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\service\AuditService.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\service\CustomUserDetailsService.java
+C:\Users\javie\Desktop\arquitectura-23447-main\ms-auth-server\src\main\java\ec\edu\espe\auth\service\JwtService.java
